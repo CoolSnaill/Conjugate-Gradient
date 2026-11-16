@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Решение СЛАУ методом сопряжённых градиентов в Fortran. Траектория на линиях уровня и график невязки.">
+  <meta name="theme-color" content="#f7f6f2">
+  <title>Метод сопряжённых градиентов · Численная лаборатория</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="solver-binary.js" defer></script>
+  <script src="solver.js" defer></script>
+  <script src="trajectory.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#lab">К лаборатории</a>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <a class="brand" href="#top">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span>Численная лаборатория</span>
+      </a>
+      <nav aria-label="Разделы сайта">
+        <a class="nav-active" href="#lab">Лаборатория</a>
+        <a href="#method">О методе</a>
+      </nav>
+      <div id="engine" class="engine"><span></span>Fortran <b>·</b> WebAssembly</div>
+    </div>
+  </header>
+
+  <main class="shell" id="top">
+    <section class="hero" aria-labelledby="page-title">
+      <div>
+        <h1 id="page-title">Метод сопряжённых<br>градиентов</h1>
+        <p>Решайте системы линейных уравнений и наблюдайте,<br class="desktop-break"> как меняются приближение и невязка на каждой итерации.</p>
+      </div>
+      <div class="hero-equation">
+        <div class="equation-type"><span>A</span><span>x</span><span class="equal">=</span><span>b</span></div>
+        <div class="hero-rule"><span aria-hidden="true">↳</span> A — симметричная положительно<br> определённая матрица</div>
+      </div>
+    </section>
+
+    <div class="workspace" id="lab">
+      <form class="panel setup" id="setup" novalidate>
+        <div class="panel-heading">
+          <div class="small-icon grid-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <div><h2>Система уравнений</h2><p>Введите данные или выберите пример</p></div>
+        </div>
+
+        <label class="field example-field" for="example">
+          <span class="field-label">Готовый пример</span>
+          <span class="select-wrap">
+            <select id="example">
+              <option value="poisson">Матрица Пуассона · 4 × 4</option>
+              <option value="simple">Базовая система · 2 × 2</option>
+              <option value="dense">Плотная матрица · 3 × 3</option>
+              <option value="scale">Разные масштабы · 6 × 6</option>
+              <option value="custom">Своя система</option>
+            </select>
+          </span>
+        </label>
+
+        <div class="dimension">
+          <span id="size-label" class="field-label">Размерность <var>n</var></span>
+          <div id="sizes" class="segmented" role="group" aria-labelledby="size-label">
+            <button type="button" data-size="2" aria-pressed="false">2</button>
+            <button type="button" data-size="3" aria-pressed="false">3</button>
+            <button type="button" data-size="4" aria-pressed="true">4</button>
+            <button type="button" data-size="5" aria-pressed="false">5</button>
+            <button type="button" data-size="6" aria-pressed="false">6</button>
+          </div>
+        </div>
+
+        <div class="matrix-area" id="matrix-area">
+          <div class="matrix-group"><span class="matrix-label" id="matrix-label">Матрица <var>A</var></span><div class="brackets"><div id="matrix-a" class="matrix" role="group" aria-labelledby="matrix-label"></div></div></div>
+          <span class="matrix-equals" aria-hidden="true">=</span>
+          <div class="matrix-group"><span class="matrix-label" id="vector-label">Вектор <var>b</var></span><div class="brackets"><div id="vector-b" class="matrix vector" role="group" aria-labelledby="vector-label"></div></div></div>
+        </div>
+
+        <div class="config">
+          <label class="field"><span class="field-label">Точность <var>ε</var></span><input type="text" inputmode="decimal" id="tolerance" value="1e-8" spellcheck="false"></label>
+          <label class="field"><span class="field-label">Лимит итераций</span><input type="number" min="1" max="300" step="1" id="limit" value="50"></label>
+        </div>
+
+        <details class="initial">
+          <summary>Начальное приближение <var>x₀</var></summary>
+          <div id="vector-x" class="matrix initial-vector" role="group" aria-label="Начальное приближение"></div>
+        </details>
+        <p id="form-error" class="form-error" role="alert" hidden></p>
+        <button id="solve" class="solve" type="submit" disabled>
+          <span aria-hidden="true">▶</span> Решить систему <kbd>Ctrl ↵</kbd>
+        </button>
+      </form>
+
+      <section class="panel results" aria-labelledby="results-title">
+        <div class="panel-heading results-heading">
+          <div class="small-icon chart-icon" aria-hidden="true">↗</div>
+          <div><h2 id="results-title">Ход решения</h2><p id="graph-description">Линии уровня <var>f(x) = ½xᵀAx − bᵀx</var></p></div>
+          <span class="status" id="result-status" role="status"><i></i><span>Подготовка</span></span>
+        </div>
+
+        <div class="graph-controls">
+          <div class="graph-tabs segmented" role="group" aria-label="Вид графика">
+            <button type="button" data-graph="trajectory" aria-controls="trajectory-panel" aria-pressed="true">Траектория</button>
+            <button type="button" data-graph="residual" aria-controls="residual-panel" aria-pressed="false">Невязка</button>
+          </div>
+          <div id="trajectory-axes" class="trajectory-axes" hidden>
+            <label>Ось X <select id="trajectory-x"></select></label>
+            <label>Ось Y <select id="trajectory-y"></select></label>
+          </div>
+        </div>
+
+        <div id="trajectory-panel" class="trajectory-panel">
+          <div class="trajectory-plot">
+            <canvas id="trajectory-graph" role="img" aria-label="Траектория приближений на линиях уровня"></canvas>
+          </div>
+          <div class="trajectory-legend">
+            <span><i class="legend-path"></i> Пройденный путь</span>
+            <span><i class="legend-start"></i> Старт <var>x₀</var></span>
+            <span><i class="legend-minimum"></i> Решение <var>x*</var></span>
+          </div>
+          <p id="trajectory-note" class="trajectory-note" hidden>Итерации спроецированы на выбранные оси. Остальные координаты сечения фиксированы в <var>x*</var>.</p>
+        </div>
+
+        <div class="chart" id="residual-panel" hidden>
+          <div class="chart-header">
+            <div class="chart-label"><span></span> Норма невязки</div>
+            <div class="scale-control" role="group" aria-label="Шкала нормы невязки">
+              <button type="button" data-scale="log" aria-pressed="true" title="Логарифмическая шкала">Лог.</button>
+              <button type="button" data-scale="linear" aria-pressed="false" title="Линейная шкала">Лин.</button>
+            </div>
+          </div>
+          <div class="graph"><canvas id="graph" role="img" aria-label="График нормы невязки по итерациям" title="Нажмите на график, чтобы выбрать итерацию"></canvas></div>
+          <div class="chart-footer"><span id="threshold-label"><i></i> Порог сходимости</span><span id="log-zero" hidden>0 у нижней границы</span><span>Итерация <var>k</var></span></div>
+        </div>
+
+        <div class="playback">
+          <div class="play-buttons">
+            <button type="button" class="step" id="prev" title="Предыдущая итерация" aria-label="Предыдущая итерация" disabled>‹</button>
+            <button type="button" class="play" id="play" title="Воспроизвести итерации" aria-label="Воспроизвести итерации" disabled>▶</button>
+            <button type="button" class="step" id="next" title="Следующая итерация" aria-label="Следующая итерация" disabled>›</button>
+          </div>
+          <label class="slider-label"><span class="sr-only">Выбрать итерацию</span><input id="iteration" type="range" min="0" max="1" value="0" disabled></label>
+          <output id="iteration-count" for="iteration">— / —</output>
+        </div>
+
+        <div class="metrics">
+          <div><span>Итерация <var>k</var></span><strong id="metric-step">—</strong></div>
+          <div><span>Норма невязки</span><strong class="purple" id="metric-norm">—</strong></div>
+          <div><span>Шаг <var>αₖ₋₁</var></span><strong id="metric-alpha">—</strong></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel solution" aria-labelledby="solution-title">
+      <div class="solution-header">
+        <div><h2 id="solution-title">Решение</h2><p id="solution-caption">Координаты выбранного приближения</p></div>
+        <div class="solution-tabs segmented" role="group" aria-label="Представление решения">
+          <button type="button" id="vector-tab" aria-pressed="true">Вектор <var>x</var></button>
+          <button type="button" id="history-tab" aria-pressed="false">История итераций</button>
+        </div>
+      </div>
+      <div id="solution-vector" class="solution-vector"></div>
+      <div class="table-wrap" id="history" hidden>
+        <table><caption class="sr-only">История метода сопряжённых градиентов</caption><thead id="history-head"></thead><tbody id="history-body"></tbody></table>
+      </div>
+    </section>
+
+    <section class="method" id="method" aria-labelledby="method-title">
+      <div><h2 id="method-title">Как работает метод</h2><p>Метод строит приближения к решению <var>Ax = b</var>. Направления поиска сопряжены относительно <var>A</var>: для разных направлений выполняется <var>pᵢᵀApⱼ = 0</var>.</p></div>
+      <div class="method-steps">
+        <div><h3>Начало</h3><p><var>r₀ = b − Ax₀</var>, <var>p₀ = r₀</var></p></div>
+        <div><h3>Итерация</h3><p><var>αₖ = (rₖᵀrₖ) / (pₖᵀApₖ)</var><br><var>xₖ₊₁ = xₖ + αₖpₖ</var><br><var>rₖ₊₁ = rₖ − αₖApₖ</var><br><var>pₖ₊₁ = rₖ₊₁ + βₖpₖ</var>, где <var>βₖ = ‖rₖ₊₁‖₂² / ‖rₖ‖₂²</var></p></div>
+        <div><h3>Остановка</h3><p>Расчёт заканчивается при <var>‖b − Ax‖₂ ≤ ε‖b‖₂</var> или по лимиту итераций. При <var>b = 0</var> порог равен <var>ε</var>.</p></div>
+      </div>
+    </section>
+  </main>
+  <footer class="shell footer"><span>Численная лаборатория</span><span>Вычисления в браузере · Fortran / WebAssembly</span></footer>
+</body>
+</html>
